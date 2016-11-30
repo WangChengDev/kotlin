@@ -42,7 +42,7 @@ open class GenericReplCompiledEvaluator(baseClasspath: Iterable<File>,
 
     private val compiledLoadedClassesHistory = ReplHistory<ClassWithInstance>()
 
-    override fun eval(codeLine: ReplCodeLine, history: List<ReplCodeLine>, compiledClasses: List<CompiledClassData>, hasResult: Boolean, classpathAddendum: List<File>): ReplEvalResult = evalStateLock.write {
+    override fun eval(codeLine: ReplCodeLine, history: List<ReplCodeLine>, compiledClasses: List<CompiledClassData>, hasResult: Boolean, classpathAddendum: List<File>): ReplEvalResult /*= evalStateLock.write*/ {
         checkAndUpdateReplHistoryCollection(compiledLoadedClassesHistory, history)?.let {
             return@eval ReplEvalResult.HistoryMismatch(compiledLoadedClassesHistory.lines, it)
         }
@@ -107,7 +107,7 @@ open class GenericReplCompiledEvaluator(baseClasspath: Iterable<File>,
     }
 
     override fun <T: Any> getInterface(receiver: Any, klass: KClass<T>): ReplInvokeResult = evalStateLock.read {
-        ReplInvokeResult.ValueResult(klass.safeCast(receiver))
+        return ReplInvokeResult.ValueResult(klass.safeCast(receiver))
     }
 
     override fun invokeMethod(receiver: Any, name: String, vararg args: Any?): ReplInvokeResult = evalStateLock.read {
