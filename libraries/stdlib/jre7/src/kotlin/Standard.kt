@@ -36,7 +36,7 @@ public inline fun <T : AutoCloseable?, R> T.use(block: (T) -> R): R {
  */
 @SinceKotlin("1.1")
 @Suppress("INVISIBLE_REFERENCE", "INVISIBLE_MEMBER")
-@kotlin.internal.InlineExposed
+@kotlin.PublishedApi
 internal fun AutoCloseable.closeSuppressed(cause: Throwable) {
     try {
         close()

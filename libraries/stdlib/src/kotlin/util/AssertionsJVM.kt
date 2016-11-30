@@ -3,7 +3,7 @@
 @file:kotlin.jvm.JvmName("PreconditionsKt")
 package kotlin
 
-@kotlin.internal.InlineExposed
+@kotlin.PublishedApi
 internal object _Assertions {
     @JvmField
     internal val ENABLED: Boolean = javaClass.desiredAssertionStatus()
