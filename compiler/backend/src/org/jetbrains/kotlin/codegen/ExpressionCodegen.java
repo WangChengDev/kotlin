@@ -4655,7 +4655,8 @@ The "returned" value of try expression with no finally is either the last expres
             boolean isStatement
     ) {
         if (isExhaustive(whenExpression, isStatement)) {
-            // when() is supposed to be exhaustive
+            // when() is
+            // supposed to be exhaustive
             genThrow(v, "kotlin/NoWhenBranchMatchedException", null);
         }
         else if (!isStatement) {
