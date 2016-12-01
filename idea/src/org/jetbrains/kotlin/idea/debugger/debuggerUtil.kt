@@ -20,13 +20,18 @@ import com.intellij.debugger.engine.DebugProcessImpl
 import com.intellij.debugger.jdi.LocalVariableProxyImpl
 import com.sun.jdi.*
 import com.sun.tools.jdi.LocalVariableImpl
+import org.jetbrains.kotlin.codegen.ClassBuilderFactories
 import org.jetbrains.kotlin.codegen.binding.CodegenBinding
-import org.jetbrains.kotlin.idea.debugger.evaluate.KotlinDebuggerCaches
+import org.jetbrains.kotlin.codegen.state.GenerationState
+import org.jetbrains.kotlin.idea.caches.resolve.analyze
+import org.jetbrains.kotlin.idea.caches.resolve.getResolutionFacade
 import org.jetbrains.kotlin.idea.util.application.runReadAction
 import org.jetbrains.kotlin.load.java.JvmAbi
+import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.psi.KtFunction
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.inline.InlineUtil
+import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
 import java.util.*
 
 fun isInsideInlineFunctionBody(visibleVariables: List<LocalVariableProxyImpl>): Boolean {
@@ -40,7 +45,7 @@ fun numberOfInlinedFunctions(visibleVariables: List<LocalVariableProxyImpl>): In
 fun isInsideInlineArgument(inlineArgument: KtFunction, location: Location, debugProcess: DebugProcessImpl): Boolean {
     val visibleVariables = location.visibleVariables(debugProcess)
 
-    val context = KotlinDebuggerCaches.getOrCreateTypeMapper(inlineArgument).bindingContext
+    val context = runReadAction { inlineArgument.analyze(BodyResolveMode.PARTIAL) }
 
     val lambdaOrdinal = runReadAction { lambdaOrdinalByArgument(inlineArgument, context) }
     val markerLocalVariables = visibleVariables.filter { it.name().startsWith(JvmAbi.LOCAL_VARIABLE_NAME_PREFIX_INLINE_ARGUMENT) }
@@ -53,7 +58,26 @@ fun isInsideInlineArgument(inlineArgument: KtFunction, location: Location, debug
 }
 
 private fun lambdaOrdinalByArgument(elementAt: KtFunction, context: BindingContext): Int {
-    val type = CodegenBinding.asmTypeForAnonymousClass(context, elementAt)
+    fun backendBindingContext(elementAt: KtElement, context: BindingContext): BindingContext {
+        val state = GenerationState(
+                elementAt.project,
+                ClassBuilderFactories.TEST,
+                elementAt.getResolutionFacade().moduleDescriptor,
+                context,
+                listOf(elementAt.getContainingKtFile()),
+                true,
+                true,
+                GenerationState.GenerateClassFilter.GENERATE_ALL,
+                false, // TODO
+                false,
+                false)
+
+        CodegenBinding.initTrace(state, elementAt.getContainingKtFile())
+
+        return state.bindingContext
+    }
+
+    val type = CodegenBinding.asmTypeForAnonymousClass(backendBindingContext(elementAt, context), elementAt)
     return type.className.substringAfterLast("$").toInt()
 }
 
