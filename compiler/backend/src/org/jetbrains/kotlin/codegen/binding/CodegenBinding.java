@@ -74,6 +74,11 @@ public class CodegenBinding {
         }
     }
 
+    public static void initTrace(@NotNull GenerationState state, @NotNull  KtFile file) {
+        CodegenAnnotatingVisitor visitor = new CodegenAnnotatingVisitor(state);
+        file.accept(visitor);
+    }
+
     public static boolean enumEntryNeedSubclass(BindingContext bindingContext, KtEnumEntry enumEntry) {
         return enumEntryNeedSubclass(bindingContext, bindingContext.get(CLASS, enumEntry));
     }

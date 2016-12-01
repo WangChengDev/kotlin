@@ -16,6 +16,7 @@
 
 package org.jetbrains.kotlin.idea.internal;
 
+import com.google.common.collect.ImmutableMap;
 import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
@@ -32,27 +33,37 @@ import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.wm.ToolWindow;
+import com.intellij.psi.PsiFile;
 import com.intellij.util.Alarm;
+import com.intellij.util.SmartList;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.java.decompiler.IdeaLogger;
 import org.jetbrains.kotlin.backend.common.output.OutputFile;
 import org.jetbrains.kotlin.backend.common.output.OutputFileCollection;
 import org.jetbrains.kotlin.codegen.ClassBuilderFactories;
 import org.jetbrains.kotlin.codegen.CompilationErrorHandler;
 import org.jetbrains.kotlin.codegen.KotlinCodegenFacade;
+import org.jetbrains.kotlin.codegen.binding.CodegenBinding;
 import org.jetbrains.kotlin.codegen.state.GenerationState;
+import org.jetbrains.kotlin.descriptors.CallableDescriptor;
+import org.jetbrains.kotlin.descriptors.SourceFile;
 import org.jetbrains.kotlin.diagnostics.Diagnostic;
 import org.jetbrains.kotlin.diagnostics.rendering.DefaultErrorMessages;
 import org.jetbrains.kotlin.idea.caches.resolve.ResolutionUtils;
-import org.jetbrains.kotlin.idea.debugger.DebuggerUtils;
 import org.jetbrains.kotlin.idea.resolve.ResolutionFacade;
 import org.jetbrains.kotlin.idea.util.InfinitePeriodicalTask;
 import org.jetbrains.kotlin.idea.util.LongRunningReadTask;
 import org.jetbrains.kotlin.idea.util.ProjectRootsUtil;
-import org.jetbrains.kotlin.psi.KtClassOrObject;
-import org.jetbrains.kotlin.psi.KtFile;
-import org.jetbrains.kotlin.psi.KtScript;
+import org.jetbrains.kotlin.psi.*;
 import org.jetbrains.kotlin.resolve.BindingContext;
+import org.jetbrains.kotlin.resolve.BindingTrace;
+import org.jetbrains.kotlin.resolve.diagnostics.Diagnostics;
+import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode;
+import org.jetbrains.kotlin.resolve.source.PsiSourceFile;
+import org.jetbrains.kotlin.types.KotlinType;
+import org.jetbrains.kotlin.util.slicedMap.ReadOnlySlice;
+import org.jetbrains.kotlin.util.slicedMap.WritableSlice;
 import org.jetbrains.kotlin.utils.StringsKt;
 
 import javax.swing.*;
@@ -159,9 +170,8 @@ public class KotlinBytecodeToolWindow extends JPanel implements Disposable {
     private final JCheckBox enableInline;
     private final JCheckBox enableOptimization;
     private final JCheckBox enableAssertions;
-    private final JButton decompile;
 
-    public KotlinBytecodeToolWindow(final Project project, ToolWindow toolWindow) {
+    public KotlinBytecodeToolWindow(Project project, ToolWindow toolWindow) {
         super(new BorderLayout());
         myProject = project;
         this.toolWindow = toolWindow;
@@ -173,7 +183,7 @@ public class KotlinBytecodeToolWindow extends JPanel implements Disposable {
         JPanel optionPanel = new JPanel(new FlowLayout());
         add(optionPanel, BorderLayout.NORTH);
 
-        decompile = new JButton("Decompile");
+        JButton decompile = new JButton("Decompile");
         if (KotlinDecompilerService.Companion.getInstance() != null) {
             optionPanel.add(decompile);
             decompile.addActionListener(new ActionListener() {
@@ -187,7 +197,8 @@ public class KotlinBytecodeToolWindow extends JPanel implements Disposable {
                         }
                         catch (IdeaLogger.InternalException ex) {
                             LOG.info(ex);
-                            Messages.showErrorDialog(myProject, "Failed to decompile " + file.getName() + ": " + ex, "Kotlin Bytecode Decompiler");
+                            Messages.showErrorDialog(myProject, "Failed to decompile " + file.getName() + ": " + ex,
+                                                     "Kotlin Bytecode Decompiler");
                         }
                     }
                 }
@@ -215,7 +226,7 @@ public class KotlinBytecodeToolWindow extends JPanel implements Disposable {
     // public for tests
     @NotNull
     public static String getBytecodeForFile(
-            final KtFile jetFile,
+            KtFile jetFile,
             boolean enableInline,
             boolean enableAssertions,
             boolean enableOptimization
@@ -268,14 +279,11 @@ public class KotlinBytecodeToolWindow extends JPanel implements Disposable {
     ) {
         ResolutionFacade resolutionFacade = ResolutionUtils.getResolutionFacade(ktFile);
 
-        BindingContext bindingContextForFile = resolutionFacade.analyzeFullyAndGetResult(Collections.singletonList(ktFile)).getBindingContext();
+        BindingContext bindingContextForFile =
+                resolutionFacade.analyzeFullyAndGetResult(Collections.singletonList(ktFile)).getBindingContext();
 
-        kotlin.Pair<BindingContext, List<KtFile>> result = DebuggerUtils.INSTANCE.analyzeInlinedFunctions(
-                resolutionFacade, bindingContextForFile, ktFile, !enableInline
-        );
-
-        BindingContext bindingContext = result.getFirst();
-        List<KtFile> toProcess = result.getSecond();
+        GenerationStateContextWithLazyResolve
+                lazyGenerationContext = new GenerationStateContextWithLazyResolve(bindingContextForFile, ktFile);
 
         GenerationState.GenerateClassFilter generateClassFilter = new GenerationState.GenerateClassFilter() {
 
@@ -300,15 +308,21 @@ public class KotlinBytecodeToolWindow extends JPanel implements Disposable {
             }
         };
 
-        GenerationState state = new GenerationState(ktFile.getProject(), ClassBuilderFactories.TEST,
-                                    resolutionFacade.getModuleDescriptor(), bindingContext,
-                                    toProcess,
-                                    !enableAssertions,
-                                    !enableAssertions,
-                                    generateClassFilter,
-                                    !enableInline,
-                                    !enableOptimization,
-                                    /*useTypeTableInSerializer=*/false);
+        GenerationState state = new GenerationState(
+                ktFile.getProject(),
+                ClassBuilderFactories.TEST,
+                resolutionFacade.getModuleDescriptor(),
+                lazyGenerationContext,
+                new SmartList<KtFile>(ktFile),
+                !enableAssertions,
+                !enableAssertions,
+                generateClassFilter,
+                !enableInline,
+                !enableOptimization,
+                false);
+
+        lazyGenerationContext.setGenerationState(state);
+
         KotlinCodegenFacade.compileCorrectFiles(state, CompilationErrorHandler.THROW_EXCEPTION);
         return state;
     }
@@ -323,8 +337,14 @@ public class KotlinBytecodeToolWindow extends JPanel implements Disposable {
             line = line.trim();
 
             if (line.startsWith("LINENUMBER")) {
-                int ktLineNum = new Scanner(line.substring("LINENUMBER".length())).nextInt() - 1;
-                lines.add(ktLineNum);
+                Scanner scanner = new Scanner(line.substring("LINENUMBER".length()));
+                try {
+                    int ktLineNum = scanner.nextInt() - 1;
+                    lines.add(ktLineNum);
+                }
+                finally {
+                    scanner.close();
+                }
             }
         }
         Collections.sort(lines);
@@ -340,15 +360,21 @@ public class KotlinBytecodeToolWindow extends JPanel implements Disposable {
             line = line.trim();
 
             if (line.startsWith("LINENUMBER")) {
-                int ktLineNum = new Scanner(line.substring("LINENUMBER".length())).nextInt() - 1;
+                Scanner scanner = new Scanner(line.substring("LINENUMBER".length()));
 
-                if (byteCodeStartLine < 0 && ktLineNum == startLine) {
-                    byteCodeStartLine = byteCodeLine;
+                try {
+                    int ktLineNum = scanner.nextInt() - 1;
+                    if (byteCodeStartLine < 0 && ktLineNum == startLine) {
+                        byteCodeStartLine = byteCodeLine;
+                    }
+
+                    if (byteCodeStartLine > 0 && ktLineNum > endLine) {
+                        byteCodeEndLine = byteCodeLine - 1;
+                        break;
+                    }
                 }
-
-                if (byteCodeStartLine > 0 && ktLineNum > endLine) {
-                    byteCodeEndLine = byteCodeLine - 1;
-                    break;
+                finally {
+                    scanner.close();
                 }
             }
 
@@ -393,5 +419,113 @@ public class KotlinBytecodeToolWindow extends JPanel implements Disposable {
     @Override
     public void dispose() {
         EditorFactory.getInstance().releaseEditor(myEditor);
+    }
+
+    private static class GenerationStateContextWithLazyResolve implements BindingContext {
+        private final BindingContext bindingContextForFile;
+        private final KtFile ktFile;
+        private final Set<KtFile> initializedFiles = new HashSet<KtFile>();
+
+        private GenerationState generationState;
+
+        public GenerationStateContextWithLazyResolve(BindingContext bindingContextForFile, KtFile ktFile) {
+            this.bindingContextForFile = bindingContextForFile;
+            this.ktFile = ktFile;
+        }
+
+        @NotNull
+        @Override
+        public Diagnostics getDiagnostics() {
+            return bindingContextForFile.getDiagnostics();
+        }
+
+        @Nullable
+        @Override
+        public <K, V> V get(ReadOnlySlice<K, V> slice, K key) {
+            V v = bindingContextForFile.get(slice, key);
+            if (v != null) return v;
+
+            if (key instanceof KtElement) {
+                KtElement ktElement = (KtElement) key;
+                return getValueFromLazyResolve(slice, key, ktElement);
+            }
+
+            if (slice == BindingContext.RESOLVED_CALL && key instanceof Call) {
+                Call call = (Call) key;
+                KtElement ktElement = call.getCallElement();
+                return getValueFromLazyResolve(slice, key, ktElement);
+            }
+
+            if (slice == CodegenBinding.CLASS_FOR_CALLABLE) {
+                CallableDescriptor callableDescriptor = (CallableDescriptor) key;
+                SourceFile source = callableDescriptor.getSource().getContainingFile();
+                if (source instanceof PsiSourceFile) {
+                    PsiFile file = ((PsiSourceFile) source).getPsiFile();
+                    if (file instanceof KtFile && file != ktFile && file.isPhysical()) {
+                        prepareGeneratorForFile((KtFile) file);
+                        return generationState.getBindingContext().get(slice, key);
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        @Nullable
+        private <K, V> V getValueFromLazyResolve(ReadOnlySlice<K, V> slice, K key, KtElement ktElement) {
+            KtFile elementFile = ktElement.getContainingKtFile();
+            if (elementFile != ktFile && elementFile.isPhysical()) {
+                BindingContext analyze = ResolutionUtils.analyze(ktElement, BodyResolveMode.FULL);
+                V v = analyze.get(slice, key);
+                if (v != null) {
+                    prepareGeneratorForFile(elementFile);
+                }
+                return v;
+            }
+
+            return null;
+        }
+
+        private void prepareGeneratorForFile(KtFile elementFile) {
+            boolean added = initializedFiles.add(elementFile);
+            if (added) {
+                CodegenBinding.initTrace(generationState, elementFile);
+            }
+        }
+
+        @Nullable
+        @Override
+        public KotlinType getType(@NotNull KtExpression expression) {
+            KotlinType type = bindingContextForFile.getType(expression);
+            if (type != null) return type;
+
+            if (expression.getContainingKtFile() != ktFile && expression.getContainingKtFile().isPhysical()) {
+                BindingContext analyze = ResolutionUtils.analyze(expression, BodyResolveMode.FULL);
+                return analyze.getType(expression);
+            }
+
+            return null;
+        }
+
+        @NotNull
+        @Override
+        public <K, V> Collection<K> getKeys(WritableSlice<K, V> slice) {
+            throw new IllegalStateException();
+        }
+
+        @NotNull
+        @Override
+        public <K, V> ImmutableMap<K, V> getSliceContents(@NotNull ReadOnlySlice<K, V> slice) {
+            throw new IllegalStateException();
+        }
+
+        @Override
+        public void addOwnDataTo(@NotNull BindingTrace trace, boolean commitDiagnostics) {
+            throw new IllegalStateException();
+        }
+
+        public void setGenerationState(GenerationState generationState) {
+            this.generationState = generationState;
+        }
     }
 }
