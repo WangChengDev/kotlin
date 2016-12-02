@@ -1,4 +1,3 @@
-@file:Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
 package cases.inline
 
 @kotlin.PublishedApi

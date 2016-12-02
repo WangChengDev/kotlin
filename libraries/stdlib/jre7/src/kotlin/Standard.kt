@@ -35,7 +35,6 @@ public inline fun <T : AutoCloseable?, R> T.use(block: (T) -> R): R {
  * The suppressed exception is added to the list of suppressed exceptions of [cause] exception.
  */
 @SinceKotlin("1.1")
-@Suppress("INVISIBLE_REFERENCE", "INVISIBLE_MEMBER")
 @kotlin.PublishedApi
 internal fun AutoCloseable.closeSuppressed(cause: Throwable) {
     try {
