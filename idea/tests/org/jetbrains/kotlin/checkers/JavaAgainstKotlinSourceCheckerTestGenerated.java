@@ -74,6 +74,12 @@ public class JavaAgainstKotlinSourceCheckerTestGenerated extends AbstractJavaAga
             doTest(fileName);
         }
 
+        @TestMetadata("FunctionInNestedClassInDataFlowInspection.kt")
+        public void testFunctionInNestedClassInDataFlowInspection() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("idea/testData/kotlinAndJavaChecker/javaAgainstKotlin/FunctionInNestedClassInDataFlowInspection.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("ImplementedMethodsFromTraits.kt")
         public void testImplementedMethodsFromTraits() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("idea/testData/kotlinAndJavaChecker/javaAgainstKotlin/ImplementedMethodsFromTraits.kt");
