@@ -10612,6 +10612,12 @@ public class DiagnosticsTestGenerated extends AbstractDiagnosticsTest {
                 doTest(fileName);
             }
 
+            @TestMetadata("publishedApi.kt")
+            public void testPublishedApi() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/inline/publishedApi.kt");
+                doTest(fileName);
+            }
+
             @TestMetadata("recursion.kt")
             public void testRecursion() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/inline/recursion.kt");
@@ -10887,6 +10893,12 @@ public class DiagnosticsTestGenerated extends AbstractDiagnosticsTest {
                 @TestMetadata("localFun.kt")
                 public void testLocalFun() throws Exception {
                     String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/inline/nonPublicMember/localFun.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("publishedApi.kt")
+                public void testPublishedApi() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/inline/nonPublicMember/publishedApi.kt");
                     doTest(fileName);
                 }
             }
