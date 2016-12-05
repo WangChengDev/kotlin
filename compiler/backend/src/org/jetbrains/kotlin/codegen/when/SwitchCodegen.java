@@ -19,6 +19,7 @@ package org.jetbrains.kotlin.codegen.when;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.codegen.ExpressionCodegen;
 import org.jetbrains.kotlin.codegen.FrameMap;
+import org.jetbrains.kotlin.config.LanguageVersionSettings;
 import org.jetbrains.kotlin.psi.KtWhenEntry;
 import org.jetbrains.kotlin.psi.KtWhenExpression;
 import org.jetbrains.kotlin.resolve.BindingContext;
@@ -48,6 +49,8 @@ abstract public class SwitchCodegen {
     protected Label endLabel = new Label();
     protected Label defaultLabel;
 
+    private LanguageVersionSettings languageVersionSettings;
+
     public SwitchCodegen(
             @NotNull KtWhenExpression expression, boolean isStatement,
             boolean isExhaustive, @NotNull ExpressionCodegen codegen
@@ -61,6 +64,8 @@ abstract public class SwitchCodegen {
         subjectType = codegen.expressionType(expression.getSubjectExpression());
         resultType = isStatement ? Type.VOID_TYPE : codegen.expressionType(expression);
         v = codegen.v;
+
+        this.languageVersionSettings = ExpressionCodegen.getLanguageVersionSettings(codegen.getState().getConfiguration());
     }
 
     /**
@@ -98,7 +103,7 @@ abstract public class SwitchCodegen {
         for (KtWhenEntry entry : expression.getEntries()) {
             Label entryLabel = new Label();
 
-            for (ConstantValue<?> constant : SwitchCodegenUtil.getConstantsFromEntry(entry, bindingContext)) {
+            for (ConstantValue<?> constant : SwitchCodegenUtil.getConstantsFromEntry(entry, bindingContext, languageVersionSettings)) {
                 if (constant instanceof NullValue) continue;
                 processConstant(constant, entryLabel);
             }
@@ -156,7 +161,7 @@ abstract public class SwitchCodegen {
     private int findNullEntryIndex(@NotNull KtWhenExpression expression) {
         int entryIndex = 0;
         for (KtWhenEntry entry : expression.getEntries()) {
-            for (ConstantValue<?> constant : SwitchCodegenUtil.getConstantsFromEntry(entry, bindingContext)) {
+            for (ConstantValue<?> constant : SwitchCodegenUtil.getConstantsFromEntry(entry, bindingContext, languageVersionSettings)) {
                 if (constant instanceof NullValue) {
                     return entryIndex;
                 }

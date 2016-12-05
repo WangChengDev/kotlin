@@ -23,6 +23,7 @@ import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.codegen.ExpressionCodegen
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.core.replaced
+import org.jetbrains.kotlin.idea.project.languageVersionSettings
 import org.jetbrains.kotlin.psi.KtConstantExpression
 import org.jetbrains.kotlin.psi.KtExpression
 import org.jetbrains.kotlin.psi.KtFile
@@ -45,7 +46,9 @@ class WrongPrimitiveLiteralFix(element: KtConstantExpression, type: KotlinType) 
     private val expectedTypeIsFloat = KotlinBuiltIns.isFloat(type)
     private val expectedTypeIsDouble = KotlinBuiltIns.isDouble(type)
     private val constValue
-            = ExpressionCodegen.getPrimitiveOrStringCompileTimeConstant(element, element.analyze(BodyResolveMode.PARTIAL))?.value as? Number
+            = ExpressionCodegen.getPrimitiveOrStringCompileTimeConstant(element,
+                                                                        element.analyze(BodyResolveMode.PARTIAL),
+                                                                        element.languageVersionSettings)?.value as? Number
 
     private val fixedExpression = buildString {
         if (expectedTypeIsFloat || expectedTypeIsDouble) {

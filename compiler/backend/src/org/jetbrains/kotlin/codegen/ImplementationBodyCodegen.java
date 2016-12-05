@@ -649,10 +649,7 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
 
         private Type genPropertyOnStack(InstructionAdapter iv, MethodContext context, @NotNull PropertyDescriptor propertyDescriptor, int index) {
             iv.load(index, classAsmType);
-            LanguageVersionSettings settings = state.getConfiguration().get(CommonConfigurationKeys.LANGUAGE_VERSION_SETTINGS);
-            if (settings == null) {
-                settings = LanguageVersionSettingsImpl.DEFAULT;
-            }
+            LanguageVersionSettings settings = ExpressionCodegen.getLanguageVersionSettings(state.getConfiguration());
             if (couldUseDirectAccessToProperty(propertyDescriptor, /* forGetter = */ true,
                                                /* isDelegated = */ false, context, settings)) {
                 Type type = typeMapper.mapType(propertyDescriptor.getType());
