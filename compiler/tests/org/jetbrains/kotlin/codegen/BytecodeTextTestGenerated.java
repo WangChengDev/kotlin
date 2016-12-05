@@ -1580,9 +1580,21 @@ public class BytecodeTextTestGenerated extends AbstractBytecodeTextTest {
             doTest(fileName);
         }
 
+        @TestMetadata("qualifiedConstValsInsideWhen.kt")
+        public void testQualifiedConstValsInsideWhen() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/when/qualifiedConstValsInsideWhen.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("sealedWhenInitialization.kt")
         public void testSealedWhenInitialization() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/when/sealedWhenInitialization.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("simpleConstValsInsideWhen.kt")
+        public void testSimpleConstValsInsideWhen() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/when/simpleConstValsInsideWhen.kt");
             doTest(fileName);
         }
     }
