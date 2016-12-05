@@ -16,13 +16,13 @@
 
 package org.jetbrains.kotlin.idea.debugger
 
-import com.google.common.collect.Sets
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.io.FileUtilRt
 import com.intellij.psi.search.GlobalSearchScope
 import org.jetbrains.kotlin.descriptors.CallableDescriptor
 import org.jetbrains.kotlin.idea.KotlinFileTypeFactory
+import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.codeInsight.DescriptorToSourceUtilsIde
 import org.jetbrains.kotlin.idea.resolve.ResolutionFacade
 import org.jetbrains.kotlin.idea.stubindex.KotlinSourceFilterScope
@@ -35,7 +35,6 @@ import org.jetbrains.kotlin.resolve.CompositeBindingContext
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall
 import org.jetbrains.kotlin.resolve.inline.InlineUtil
 import org.jetbrains.kotlin.resolve.jvm.JvmClassName
-import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
 import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedSimpleFunctionDescriptor
 import java.util.*
 
@@ -107,8 +106,6 @@ object DebuggerUtils {
     ): Pair<BindingContext, List<KtFile>> {
         val analyzedElements = HashSet<KtElement>()
         val context = analyzeElementWithInline(
-                resolutionFacadeForFile,
-                bindingContextForFile,
                 file,
                 1,
                 analyzedElements,
@@ -127,19 +124,13 @@ object DebuggerUtils {
         return Pair<BindingContext, List<KtFile>>(context, ArrayList(toProcess))
     }
 
-    fun analyzeElementWithInline(
-            resolutionFacade: ResolutionFacade,
-            bindingContext: BindingContext,
-            function: KtNamedFunction,
-            analyzeInlineFunctions: Boolean): Collection<KtElement> {
+    fun analyzeElementWithInline(function: KtNamedFunction, analyzeInlineFunctions: Boolean): Collection<KtElement> {
         val analyzedElements = HashSet<KtElement>()
-        analyzeElementWithInline(resolutionFacade, bindingContext, function, 1, analyzedElements, !analyzeInlineFunctions)
+        analyzeElementWithInline(function, 1, analyzedElements, !analyzeInlineFunctions)
         return analyzedElements
     }
 
     private fun analyzeElementWithInline(
-            resolutionFacade: ResolutionFacade,
-            bindingContext: BindingContext,
             element: KtElement,
             deep: Int,
             analyzedElements: MutableSet<KtElement>,
@@ -147,9 +138,14 @@ object DebuggerUtils {
         val project = element.project
         val collectedElements = HashSet<KtNamedFunction>()
 
+        val innerContexts = HashSet<BindingContext>()
+
         element.accept(object : KtTreeVisitorVoid() {
             override fun visitExpression(expression: KtExpression) {
                 super.visitExpression(expression)
+
+                val bindingContext = expression.analyze()
+                innerContexts.add(bindingContext)
 
                 val call = bindingContext.get(BindingContext.CALL, expression) ?: return
 
@@ -160,6 +156,7 @@ object DebuggerUtils {
             override fun visitDestructuringDeclaration(destructuringDeclaration: KtDestructuringDeclaration) {
                 super.visitDestructuringDeclaration(destructuringDeclaration)
 
+                val bindingContext = destructuringDeclaration.analyze()
                 for (entry in destructuringDeclaration.entries) {
                     val resolvedCall = bindingContext.get(BindingContext.COMPONENT_RESOLVED_CALL, entry)
                     checkResolveCall(resolvedCall)
@@ -168,6 +165,8 @@ object DebuggerUtils {
 
             override fun visitForExpression(expression: KtForExpression) {
                 super.visitForExpression(expression)
+
+                val bindingContext = expression.analyze()
 
                 checkResolveCall(bindingContext.get(BindingContext.LOOP_RANGE_ITERATOR_RESOLVED_CALL, expression.loopRange))
                 checkResolveCall(bindingContext.get(BindingContext.LOOP_RANGE_HAS_NEXT_RESOLVED_CALL, expression.loopRange))
@@ -192,23 +191,17 @@ object DebuggerUtils {
         analyzedElements.add(element)
 
         if (!collectedElements.isEmpty() && deep < 10) {
-            val innerContexts = ArrayList<BindingContext>()
             for (inlineFunctions in collectedElements) {
                 val body = inlineFunctions.bodyExpression
                 if (body != null) {
-                    val bindingContextForFunction = resolutionFacade.analyze(body, BodyResolveMode.FULL)
-                    innerContexts.add(analyzeElementWithInline(resolutionFacade, bindingContextForFunction, inlineFunctions, deep + 1,
-                                                               analyzedElements, analyzeInlineFunctions))
+                    innerContexts.add(analyzeElementWithInline(inlineFunctions, deep + 1, analyzedElements, analyzeInlineFunctions))
                 }
             }
 
-            innerContexts.add(bindingContext)
-
             analyzedElements.addAll(collectedElements)
-            return CompositeBindingContext.create(innerContexts)
         }
 
-        return bindingContext
+        return CompositeBindingContext.create(innerContexts.toList())
     }
 
     private fun hasReifiedTypeParameters(descriptor: CallableDescriptor): Boolean {
