@@ -61,16 +61,16 @@ internal class ExplicitReceiverScopeTowerProcessor<D : CallableDescriptor, C: Ca
     override fun simpleProcess(data: TowerData): Collection<C> {
         return when (data) {
             TowerData.Empty -> resolveAsMember()
-            is TowerData.TowerLevel -> resolveAsExtension(data.level)
+            is TowerData.LevelContainer -> resolveAsExtension(data.level)
             else -> emptyList()
         }
     }
 
-    private fun resolveAsMember(): Collection<C> {
-        val members = ReceiverScopeTowerLevel(scopeTower, explicitReceiver)
-                .collectCandidates(null).filter { !it.requiresExtensionReceiver }
-        return members.map { candidateFactory.createCandidate(it, ExplicitReceiverKind.DISPATCH_RECEIVER, extensionReceiver = null) }
-    }
+    private fun resolveAsMember() =
+            processCommonAndSyntheticMembers(
+                    explicitReceiver, MemberScopeTowerLevel(scopeTower, explicitReceiver), collectCandidates, candidateFactory,
+                    isExplicitReceiver = true
+            )
 
     private fun resolveAsExtension(level: ScopeTowerLevel): Collection<C> {
         val extensions = level.collectCandidates(explicitReceiver).filter { it.requiresExtensionReceiver }
@@ -105,6 +105,11 @@ private class NoExplicitReceiverScopeTowerProcessor<D : CallableDescriptor, C: C
                         candidateFactory.createCandidate(it, ExplicitReceiverKind.NO_EXPLICIT_RECEIVER, extensionReceiver = null)
                     }
                 }
+                is TowerData.MemberLevelFromImplicitReceiver -> {
+                    processCommonAndSyntheticMembers(
+                            data.dispatchReceiver, data.level, collectCandidates, candidateFactory, isExplicitReceiver = false
+                    )
+                }
                 is TowerData.BothTowerLevelAndImplicitReceiver -> {
                     val result = mutableListOf<C>()
 
@@ -118,6 +123,35 @@ private class NoExplicitReceiverScopeTowerProcessor<D : CallableDescriptor, C: C
                 }
                 else -> emptyList()
             }
+
+}
+private fun <D : CallableDescriptor, C : Candidate<D>> processCommonAndSyntheticMembers(
+        receiverForMember: ReceiverValueWithSmartCastInfo,
+        scopeTowerLevel: ScopeTowerLevel,
+        collectCandidates: CandidatesCollector<D>,
+        candidateFactory: CandidateFactory<D, C>,
+        isExplicitReceiver: Boolean
+): List<C> {
+    val (members, syntheticExtension) =
+            scopeTowerLevel.collectCandidates(null)
+                    .filter {
+                        it.descriptor.dispatchReceiverParameter == null || it.descriptor.extensionReceiverParameter == null
+                    }.partition { !it.requiresExtensionReceiver }
+
+    return members.map {
+               candidateFactory.createCandidate(
+                       it,
+                       if (isExplicitReceiver) ExplicitReceiverKind.DISPATCH_RECEIVER else ExplicitReceiverKind.NO_EXPLICIT_RECEIVER,
+                       extensionReceiver = null
+               )
+           } +
+           syntheticExtension.map {
+               candidateFactory.createCandidate(
+                       it,
+                       if (isExplicitReceiver) ExplicitReceiverKind.EXTENSION_RECEIVER else ExplicitReceiverKind.NO_EXPLICIT_RECEIVER,
+                       extensionReceiver = receiverForMember
+               )
+           }
 }
 
 private fun <D : CallableDescriptor, C: Candidate<D>> createSimpleProcessor(

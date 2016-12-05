@@ -22,6 +22,7 @@ import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.descriptors.CallableDescriptor
 import org.jetbrains.kotlin.descriptors.ScriptDescriptor
 import org.jetbrains.kotlin.descriptors.Visibilities
+import org.jetbrains.kotlin.descriptors.synthetic.SyntheticMemberDescriptor
 import org.jetbrains.kotlin.resolve.DescriptorEquivalenceForOverrides
 import org.jetbrains.kotlin.resolve.OverridingUtil
 import org.jetbrains.kotlin.resolve.calls.context.CheckArgumentTypesMode
@@ -133,6 +134,10 @@ class OverloadingConflictResolver<C : Any>(
 
                 CheckArgumentTypesMode.CHECK_VALUE_ARGUMENTS ->
                     findMaximallySpecificCall(candidates, discriminateGenerics, isDebuggerContext)
+                    ?: findMaximallySpecificCall(
+                            candidates.filterTo(mutableSetOf()) { it.resultingDescriptor !is SyntheticMemberDescriptor<*> },
+                            discriminateGenerics, isDebuggerContext
+                    )
             }
 
     // null means ambiguity between variables
@@ -219,7 +224,7 @@ class OverloadingConflictResolver<C : Any>(
     }
 
     /**
-     * Returns `true` if [call1] is definitely not less specific than [call2],
+     * Returns `true` if [call1] is definitely more or equally specific [call2],
      * `false` otherwise.
      */
     private fun compareCallsByUsedArguments(
