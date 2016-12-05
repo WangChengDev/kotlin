@@ -128,6 +128,24 @@ public class JavaAgainstKotlinSourceCheckerTestGenerated extends AbstractJavaAga
             doTest(fileName);
         }
 
+        @TestMetadata("TopLevelFunctionWithNameSimilarToClassInDataFlowInspection.kt")
+        public void testTopLevelFunctionWithNameSimilarToClassInDataFlowInspection() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("idea/testData/kotlinAndJavaChecker/javaAgainstKotlin/TopLevelFunctionWithNameSimilarToClassInDataFlowInspection.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("TopLevelFunctionWithNameSimilarToPropertyInDataFlowInspection.kt")
+        public void testTopLevelFunctionWithNameSimilarToPropertyInDataFlowInspection() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("idea/testData/kotlinAndJavaChecker/javaAgainstKotlin/TopLevelFunctionWithNameSimilarToPropertyInDataFlowInspection.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("TopLevelOverloadedFunctionInDataFlowInspection.kt")
+        public void testTopLevelOverloadedFunctionInDataFlowInspection() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("idea/testData/kotlinAndJavaChecker/javaAgainstKotlin/TopLevelOverloadedFunctionInDataFlowInspection.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("UseKotlinConstInSwitch.kt")
         public void testUseKotlinConstInSwitch() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("idea/testData/kotlinAndJavaChecker/javaAgainstKotlin/UseKotlinConstInSwitch.kt");
