@@ -461,9 +461,8 @@ public abstract class MemberCodegen<T extends KtElement/* TODO: & JetDeclaration
 
         KtExpression initializer = property.getInitializer();
 
-        LanguageVersionSettings settings = ExpressionCodegen.getLanguageVersionSettings(state.getConfiguration());
         ConstantValue<?> initializerValue =
-                initializer != null ? ExpressionCodegen.getCompileTimeConstant(initializer, bindingContext, settings) : null;
+                initializer != null ? ExpressionCodegen.getCompileTimeConstant(initializer, bindingContext, state.getShouldInlineConstVals()) : null;
         // we must write constant values for fields in light classes,
         // because Java's completion for annotation arguments uses this information
         if (initializerValue == null) return state.getClassBuilderMode().generateBodies;

@@ -82,7 +82,7 @@ class CodegenAnnotatingVisitor extends KtVisitorVoid {
     private final GenerationState.GenerateClassFilter filter;
     private final JvmRuntimeTypes runtimeTypes;
     private final JvmFileClassesProvider fileClassesProvider;
-    private final LanguageVersionSettings languageVersionSettings;
+    private final boolean shouldInlineConstVals;
 
     public CodegenAnnotatingVisitor(@NotNull GenerationState state) {
         this.bindingTrace = state.getBindingTrace();
@@ -90,7 +90,7 @@ class CodegenAnnotatingVisitor extends KtVisitorVoid {
         this.filter = state.getGenerateDeclaredClassFilter();
         this.runtimeTypes = state.getJvmRuntimeTypes();
         this.fileClassesProvider = state.getFileClassesProvider();
-        this.languageVersionSettings = ExpressionCodegen.getLanguageVersionSettings(state.getConfiguration());
+        this.shouldInlineConstVals = state.getShouldInlineConstVals();
     }
 
     @NotNull
@@ -641,7 +641,7 @@ class CodegenAnnotatingVisitor extends KtVisitorVoid {
 
         WhenByEnumsMapping mapping = new WhenByEnumsMapping(classDescriptor, currentClassName, fieldNumber);
 
-        for (ConstantValue<?> constant : SwitchCodegenUtil.getAllConstants(expression, bindingContext, languageVersionSettings)) {
+        for (ConstantValue<?> constant : SwitchCodegenUtil.getAllConstants(expression, bindingContext, shouldInlineConstVals)) {
             if (constant instanceof NullValue) continue;
 
             assert constant instanceof EnumValue : "expression in when should be EnumValue";
@@ -658,7 +658,7 @@ class CodegenAnnotatingVisitor extends KtVisitorVoid {
                SwitchCodegenUtil.checkAllItemsAreConstantsSatisfying(
                        expression,
                        bindingContext,
-                       languageVersionSettings,
+                       shouldInlineConstVals,
                        new Function1<ConstantValue<?>, Boolean>() {
                            @Override
                            public Boolean invoke(@NotNull ConstantValue<?> constant) {

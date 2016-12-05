@@ -1435,8 +1435,7 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
 
     @Override
     public StackValue visitConstantExpression(@NotNull KtConstantExpression expression, StackValue receiver) {
-        LanguageVersionSettings settings = getLanguageVersionSettings(state.getConfiguration());
-        ConstantValue<?> compileTimeValue = getPrimitiveOrStringCompileTimeConstant(expression, bindingContext, settings);
+        ConstantValue<?> compileTimeValue = getPrimitiveOrStringCompileTimeConstant(expression, bindingContext, state.getShouldInlineConstVals());
         assert compileTimeValue != null;
         return StackValue.constant(compileTimeValue.getValue(), expressionType(expression));
     }
@@ -1445,8 +1444,8 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
     public static ConstantValue<?> getPrimitiveOrStringCompileTimeConstant(
             @NotNull KtExpression expression,
             @NotNull BindingContext bindingContext,
-            @NotNull LanguageVersionSettings languageVersionSettings) {
-        ConstantValue<?> constant = getCompileTimeConstant(expression, bindingContext, false, languageVersionSettings);
+            boolean shouldInlineConstVals) {
+        ConstantValue<?> constant = getCompileTimeConstant(expression, bindingContext, false, shouldInlineConstVals);
         if (constant == null || ConstantExpressionEvaluatorKt.isStandaloneOnlyConstant(constant)) {
             return null;
         }
@@ -1457,8 +1456,8 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
     public static ConstantValue<?> getCompileTimeConstant(
             @NotNull KtExpression expression,
             @NotNull BindingContext bindingContext,
-            @NotNull LanguageVersionSettings languageVersionSettings) {
-        return getCompileTimeConstant(expression, bindingContext, false, languageVersionSettings);
+            boolean shouldInlineConstVals) {
+        return getCompileTimeConstant(expression, bindingContext, false, shouldInlineConstVals);
     }
 
     @Nullable
@@ -1466,15 +1465,14 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
             @NotNull KtExpression expression,
             @NotNull final BindingContext bindingContext,
             boolean takeUpConstValsAsConst,
-            @NotNull LanguageVersionSettings languageVersionSettings
+            boolean shouldInlineConstVals
     ) {
         CompileTimeConstant<?> compileTimeValue = ConstantExpressionEvaluator.getConstant(expression, bindingContext);
         if (compileTimeValue == null || compileTimeValue.getUsesNonConstValAsConstant()) {
             return null;
         }
 
-        boolean inlineConstVals = languageVersionSettings.supportsFeature(LanguageFeature.InlineConstVals);
-        if (!inlineConstVals && !takeUpConstValsAsConst && compileTimeValue.getUsesVariableAsConstant()) {
+        if (!shouldInlineConstVals && !takeUpConstValsAsConst && compileTimeValue.getUsesVariableAsConstant()) {
             final Ref<Boolean> containsNonInlinedVals = new Ref<Boolean>(false);
             KtVisitor constantChecker = new KtVisitor() {
                 @Override
@@ -2613,11 +2611,10 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
         boolean skipPropertyAccessors;
 
         PropertyDescriptor originalPropertyDescriptor = DescriptorUtils.unwrapFakeOverride(propertyDescriptor);
-        LanguageVersionSettings languageVersionSettings = getLanguageVersionSettings(state.getConfiguration());
 
         if (fieldAccessorKind != FieldAccessorKind.NORMAL) {
             int flags = AsmUtil.getVisibilityForBackingField(propertyDescriptor, isDelegatedProperty);
-            boolean isInlinedConst = propertyDescriptor.isConst() && languageVersionSettings.supportsFeature(LanguageFeature.InlineConstVals);
+            boolean isInlinedConst = propertyDescriptor.isConst() && state.getShouldInlineConstVals();
             skipPropertyAccessors = isInlinedConst || (flags & ACC_PRIVATE) == 0 || skipAccessorsForPrivateFieldInOuterClass;
 
             if (!skipPropertyAccessors) {
@@ -2638,7 +2635,7 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
         }
 
         if (!skipPropertyAccessors) {
-            if (!couldUseDirectAccessToProperty(propertyDescriptor, true, isDelegatedProperty, context, languageVersionSettings)) {
+            if (!couldUseDirectAccessToProperty(propertyDescriptor, true, isDelegatedProperty, context, state.getShouldInlineConstVals())) {
                 propertyDescriptor = context.getAccessorForSuperCallIfNeeded(propertyDescriptor, superCallTarget);
 
                 propertyDescriptor = context.accessibleDescriptor(propertyDescriptor, superCallTarget);
@@ -2652,7 +2649,7 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
             if (propertyDescriptor.isVar()) {
                 PropertySetterDescriptor setter = propertyDescriptor.getSetter();
                 if (setter != null &&
-                    !couldUseDirectAccessToProperty(propertyDescriptor, false, isDelegatedProperty, context, languageVersionSettings) &&
+                    !couldUseDirectAccessToProperty(propertyDescriptor, false, isDelegatedProperty, context, state.getShouldInlineConstVals()) &&
                     !isConstOrHasJvmFieldAnnotation(propertyDescriptor)) {
                     callableSetter = typeMapper.mapToCallableMethod(setter, isSuper);
                 }
@@ -2682,11 +2679,6 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
                                    typeMapper.mapType(
                                            isDelegatedProperty && forceField ? delegateType : propertyDescriptor.getOriginal().getType()),
                                    isStaticBackingField, fieldName, callableGetter, callableSetter, receiver, this, resolvedCall);
-    }
-
-    public static LanguageVersionSettings getLanguageVersionSettings(@NotNull CompilerConfiguration configuration) {
-        LanguageVersionSettings settings = configuration.get(CommonConfigurationKeys.LANGUAGE_VERSION_SETTINGS);
-        return settings != null ? settings : LanguageVersionSettingsImpl.DEFAULT;
     }
 
     @NotNull
@@ -3531,8 +3523,7 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
                               expression.getRight(), reference);
         }
         else {
-            LanguageVersionSettings settings = getLanguageVersionSettings(state.getConfiguration());
-            ConstantValue<?> compileTimeConstant = getPrimitiveOrStringCompileTimeConstant(expression, bindingContext, settings);
+            ConstantValue<?> compileTimeConstant = getPrimitiveOrStringCompileTimeConstant(expression, bindingContext, state.getShouldInlineConstVals());
             if (compileTimeConstant != null) {
                 return StackValue.constant(compileTimeConstant.getValue(), expressionType(expression));
             }
@@ -3675,8 +3666,7 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
     }
 
     private boolean isIntZero(KtExpression expr, Type exprType) {
-        LanguageVersionSettings settings = getLanguageVersionSettings(state.getConfiguration());
-        ConstantValue<?> exprValue = getPrimitiveOrStringCompileTimeConstant(expr, bindingContext, settings);
+        ConstantValue<?> exprValue = getPrimitiveOrStringCompileTimeConstant(expr, bindingContext, state.getShouldInlineConstVals());
         return isIntPrimitive(exprType) && exprValue != null && Integer.valueOf(0).equals(exprValue.getValue());
     }
 
@@ -3806,8 +3796,7 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
     }
 
     public void invokeAppend(KtExpression expr) {
-        LanguageVersionSettings settings = getLanguageVersionSettings(state.getConfiguration());
-        ConstantValue<?> compileTimeConstant = getPrimitiveOrStringCompileTimeConstant(expr, bindingContext, settings);
+        ConstantValue<?> compileTimeConstant = getPrimitiveOrStringCompileTimeConstant(expr, bindingContext, state.getShouldInlineConstVals());
 
         if (compileTimeConstant == null && expr instanceof KtBinaryExpression) {
             KtBinaryExpression binaryExpression = (KtBinaryExpression) expr;
@@ -3850,8 +3839,7 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
 
     @Override
     public StackValue visitPrefixExpression(@NotNull KtPrefixExpression expression, @NotNull StackValue receiver) {
-        LanguageVersionSettings settings = getLanguageVersionSettings(state.getConfiguration());
-        ConstantValue<?> compileTimeConstant = getPrimitiveOrStringCompileTimeConstant(expression, bindingContext, settings);
+        ConstantValue<?> compileTimeConstant = getPrimitiveOrStringCompileTimeConstant(expression, bindingContext, state.getShouldInlineConstVals());
         if (compileTimeConstant != null) {
             return StackValue.constant(compileTimeConstant.getValue(), expressionType(expression));
         }

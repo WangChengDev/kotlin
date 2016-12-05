@@ -1233,8 +1233,7 @@ public abstract class StackValue {
                 return inlineConstant(type, v);
             }
 
-            LanguageVersionSettings languageVersionSettings = ExpressionCodegen.getLanguageVersionSettings(codegen.getState().getConfiguration());
-            if (descriptor.isConst() && languageVersionSettings.supportsFeature(LanguageFeature.InlineConstVals)) {
+            if (descriptor.isConst() && codegen.getState().getShouldInlineConstVals()) {
                 return inlineConstant(type, v);
             }
 

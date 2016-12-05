@@ -649,9 +649,8 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
 
         private Type genPropertyOnStack(InstructionAdapter iv, MethodContext context, @NotNull PropertyDescriptor propertyDescriptor, int index) {
             iv.load(index, classAsmType);
-            LanguageVersionSettings settings = ExpressionCodegen.getLanguageVersionSettings(state.getConfiguration());
             if (couldUseDirectAccessToProperty(propertyDescriptor, /* forGetter = */ true,
-                                               /* isDelegated = */ false, context, settings)) {
+                                               /* isDelegated = */ false, context, state.getShouldInlineConstVals())) {
                 Type type = typeMapper.mapType(propertyDescriptor.getType());
                 String fieldName = ((FieldOwnerContext) context.getParentContext()).getFieldName(propertyDescriptor, false);
                 iv.getfield(classAsmType.getInternalName(), fieldName, type.getDescriptor());
